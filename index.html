@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <!-- โค้ดป้องกันการจำ Cache ของเบราว์เซอร์ LINE -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  
+  <title>ระบบลงเวลาออกงาน</title>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    body { font-family: 'Kanit', sans-serif; text-align: center; padding: 20px; background-color: #f4f6f9; }
+    h2 { color: #333; }
+    .box { 
+        background: white; 
+        padding: 20px; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
+        margin-bottom: 20px; 
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    /* ปุ่มวงกลมสีแดง ขนาด 1.5 x 1.5 cm */
+    .btn-out-circle { 
+        width: 1.5cm; 
+        height: 1.5cm; 
+        border-radius: 50%; 
+        background-color: #dc3545; 
+        color: white; 
+        border: none; 
+        font-size: 12px; 
+        font-weight: bold; 
+        cursor: pointer; 
+        display: none; /* ซ่อนไว้จนกว่าจะเช็ค GPS ผ่าน */
+        justify-content: center; 
+        align-items: center;
+        box-shadow: 0 4px 6px rgba(220, 53, 69, 0.4);
+    }
+    .btn-out-circle:active {
+        transform: scale(0.95);
+        box-shadow: 0 2px 4px rgba(220, 53, 69, 0.4);
+    }
+
+    #status { font-size: 16px; margin: 15px 0; }
+    .loading { color: #f39c12; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2>ระบบสแกนออกงาน</h2>
+  
+  <div class="box">
+    <div id="profile-info" style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">กำลังโหลดข้อมูล...</div>
+    <div id="status" class="loading">กำลังเตรียมความพร้อม...</div>
+    
+    <!-- ปุ่มสแกนออก (วงกลม) -->
+    <button id="btn-out" class="btn-out-circle" onclick="recordTime('สแกนออก')">ออก</button>
+  </div>
+
+  <script>
+    // ==========================================
+    // 🛠️ ส่วนตั้งค่า
+    // ==========================================
+    const LIFF_ID = "2012358032-O25dyx4P"; 
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzM9UpxEvIkHO928aBH2LES7ZocbV5RKL3fLD9u_GxcIzrg5RGLvjwoVM0VJfQuE1GgJQ/exec"; 
+    // ==========================================
+
+    let OFFICE_LAT = 0;
+    let OFFICE_LNG = 0;
+    let MAX_DISTANCE = 0;
+
+    let userProfile = null;
+    let currentLat = null;
+    let currentLng = null;
+    let currentDist = null;
+
+    async function main() {
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (!liff.isLoggedIn()) {
+          liff.login(); 
+          return;
+        }
+        userProfile = await liff.getProfile();
+        document.getElementById("profile-info").innerText = "👤 สวัสดีคุณ: " + userProfile.displayName;
+        
+        loadSettings();
+      } catch (err) {
+        document.getElementById("status").innerHTML = `<span style="color: red;">เกิดข้อผิดพลาด LIFF: ${err}</span>`;
+      }
+    }
+
+    async function loadSettings() {
+      document.getElementById("status").innerHTML = `<span class="loading">กำลังโหลดพิกัดออฟฟิศ...</span>`;
+      try {
+        const response = await fetch(WEB_APP_URL);
+        const text = await response.text();
+        const settings = JSON.parse(text);
+        
+        OFFICE_LAT = settings.lat;
+        OFFICE_LNG = settings.lng;
+        MAX_DISTANCE = settings.distance;
+        
+        getLocation();
+      } catch (error) {
+        document.getElementById("status").innerHTML = `<span style="color: red; font-size: 14px;">❌ ล้มเหลว: ${error.message}</span>`;
+      }
+    }
+
+    function getLocation() {
+      document.getElementById("status").innerHTML = `<span class="loading">กำลังตรวจสอบตำแหน่งของคุณ...</span>`;
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(checkDistance, showError, {
+          enableHighAccuracy: true, timeout: 15000, maximumAge: 0
+        });
+      }
+    }
+
+    function checkDistance(position) {
+      currentLat = position.coords.latitude;
+      currentLng = position.coords.longitude;
+      
+      currentDist = calculateDistance(currentLat, currentLng, OFFICE_LAT, OFFICE_LNG);
+      
+      const statusDiv = document.getElementById("status");
+      if (currentDist <= MAX_DISTANCE) {
+        statusDiv.innerHTML = `<span style="color: #28a745; font-weight:bold;">✅ คุณอยู่ในพื้นที่ออฟฟิศ<br>(ระยะห่าง ${currentDist} เมตร)</span>`;
+        // แสดงปุ่มเมื่ออยู่ในระยะ (ใช้ flex เพื่อให้รองรับ justify-content/align-items)
+        document.getElementById("btn-out").style.display = "flex"; 
+      } else {
+        statusDiv.innerHTML = `<span style="color: #dc3545; font-weight:bold;">❌ อยู่นอกพื้นที่<br>(ระยะห่าง ${currentDist}/${MAX_DISTANCE} เมตร)</span>`;
+      }
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; 
+      const phi1 = lat1 * Math.PI / 180;
+      const phi2 = lat2 * Math.PI / 180;
+      const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+      const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+      const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return Math.round(R * c); 
+    }
+
+    async function recordTime(statusText) {
+      document.getElementById("btn-out").style.display = "none";
+      document.getElementById("status").innerHTML = `<span class="loading">⏳ กำลังบันทึกข้อมูล...</span>`;
+
+      const payload = {
+        userId: userProfile.userId,
+        displayName: userProfile.displayName,
+        status: statusText,
+        lat: currentLat,
+        lng: currentLng,
+        distance: currentDist
+      };
+
+      try {
+        const response = await fetch(WEB_APP_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+        
+        const result = await response.json();
+
+        if (result.status === "success") {
+          alert(`บันทึกข้อมูลสำเร็จ: ${statusText}`);
+          liff.closeWindow(); 
+        } else {
+          document.getElementById("status").innerHTML = `<span style="color: red;">❌ บันทึกล้มเหลว: ${result.message}</span>`;
+          document.getElementById("btn-out").style.display = "flex";
+        }
+      } catch (error) {
+        document.getElementById("status").innerHTML = `<span style="color: red;">❌ เกิดข้อผิดพลาด: ${error.message}</span>`;
+        document.getElementById("btn-out").style.display = "flex";
+      }
+    }
+
+    function showError(error) {
+      let msg = "เกิดข้อผิดพลาดในการดึงพิกัด";
+      if(error.code === error.PERMISSION_DENIED) msg = "❌ คุณไม่ได้อนุญาตให้เข้าถึง GPS";
+      if(error.code === error.POSITION_UNAVAILABLE) msg = "❌ ไม่สามารถค้นหาพิกัดตำแหน่งของคุณได้";
+      if(error.code === error.TIMEOUT) msg = "❌ หมดเวลาในการค้นหาตำแหน่ง";
+      document.getElementById("status").innerHTML = `<span style="color: red; font-weight:bold;">${msg}</span>`;
+    }
+
+    window.onload = main;
+  </script>
+</body>
+</html>
