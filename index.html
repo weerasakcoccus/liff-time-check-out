@@ -4,52 +4,40 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   
-  <!-- โค้ดป้องกันการจำ Cache ของเบราว์เซอร์ LINE -->
+  <!-- ป้องกันแคช -->
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   
-  <title>ระบบลงเวลาออกงาน</title>
+  <title>ระบบสแกนออกงาน</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  
   <style>
     body { font-family: 'Kanit', sans-serif; text-align: center; padding: 20px; background-color: #f4f6f9; }
     h2 { color: #333; }
-    .box { 
-        background: white; 
-        padding: 20px; 
-        border-radius: 12px; 
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1); 
-        margin-bottom: 20px; 
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-    }
+    .box { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
     
-    /* ปุ่มสแกนออกงาน (วงกลมใหญ่พิเศษ) */
+    /* รูปแบบปุ่มวงกลมสีแดง (จัดกึ่งกลางด้วย Flexbox) */
     .btn-out-circle { 
-      width: 240px; /* ขยายขนาดใหญ่ขึ้น 3 เท่า */
+      width: 240px; 
       height: 240px; 
       background-color: #dc3545; 
       border-radius: 50%; 
       border: none; 
       color: white; 
-      font-size: 32px; /* ขยายขนาดตัวหนังสือ */
-      font-weight: bold;
-      display: none; 
+      font-size: 32px; 
+      font-weight: bold; 
       cursor: pointer; 
       margin: 30px auto; 
       box-shadow: 0 8px 20px rgba(220, 53, 69, 0.5); 
       
-      /* คำสั่งจัดข้อความให้อยู่กึ่งกลางเสมอ */
-      text-align: center;
+      /* ซ่อนไว้ก่อน จะแสดงเป็น flex เมื่ออยู่ในพื้นที่ */
+      display: none; 
+      justify-content: center;
+      align-items: center;
       padding: 0;
-      line-height: normal;
     }
-    .btn-out-circle:active {
-        transform: scale(0.95);
-        box-shadow: 0 2px 4px rgba(220, 53, 69, 0.4);
-    }
-
+    
     #status { font-size: 16px; margin: 15px 0; }
     .loading { color: #f39c12; font-weight: bold; }
   </style>
@@ -61,49 +49,40 @@
     <div id="profile-info" style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">กำลังโหลดข้อมูล...</div>
     <div id="status" class="loading">กำลังเตรียมความพร้อม...</div>
     
-    <!-- ปุ่มสแกนออกแบบวงกลมสีแดง -->
+    <!-- ปุ่มสแกนออก -->
     <button id="btn-out" class="btn-out-circle" onclick="recordTime('สแกนออก')">สแกนออกงาน</button>
   </div>
 
   <script>
-    // ==========================================
-    // 🛠️ ส่วนตั้งค่า
-    // ==========================================
+    // ⚙️ 1. ใส่ค่าของคุณตรงนี้ให้ถูกต้อง
     const LIFF_ID = "2012358032-T2VtBxhh"; 
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzM9UpxEvIkHO928aBH2LES7ZocbV5RKL3fLD9u_GxcIzrg5RGLvjwoVM0VJfQuE1GgJQ/exec"; 
-    // ==========================================
 
-    let OFFICE_LAT = 0;
-    let OFFICE_LNG = 0;
-    let MAX_DISTANCE = 0;
+    // ตัวแปรเก็บพิกัด
+    let OFFICE_LAT = 0, OFFICE_LNG = 0, MAX_DISTANCE = 0;
+    let userProfile = null, currentLat = null, currentLng = null, currentDist = null;
 
-    let userProfile = null;
-    let currentLat = null;
-    let currentLng = null;
-    let currentDist = null;
-
+    // 🚀 2. เริ่มต้น LIFF
     async function main() {
       try {
         await liff.init({ liffId: LIFF_ID });
-        if (!liff.isLoggedIn()) {
-          liff.login(); 
-          return;
-        }
+        if (!liff.isLoggedIn()) { liff.login(); return; }
+        
         userProfile = await liff.getProfile();
         document.getElementById("profile-info").innerText = "👤 สวัสดีคุณ: " + userProfile.displayName;
-        
         loadSettings();
       } catch (err) {
-        document.getElementById("status").innerHTML = `<span style="color: red;">เกิดข้อผิดพลาด LIFF: ${err}</span>`;
+        document.getElementById("status").innerHTML = `<span style="color: red;">Error LIFF: ${err}</span>`;
       }
     }
 
+    // 📍 3. โหลดค่าพิกัดออฟฟิศจาก Google Sheet
     async function loadSettings() {
       document.getElementById("status").innerHTML = `<span class="loading">กำลังโหลดพิกัดออฟฟิศ...</span>`;
       try {
-        const response = await fetch(WEB_APP_URL);
-        const text = await response.text();
-        const settings = JSON.parse(text);
+        // เติม ?type=location เพื่อเรียกค่าพิกัด
+        const response = await fetch(WEB_APP_URL + "?type=location");
+        const settings = await response.json();
         
         OFFICE_LAT = settings.lat;
         OFFICE_LNG = settings.lng;
@@ -111,54 +90,51 @@
         
         getLocation();
       } catch (error) {
-        document.getElementById("status").innerHTML = `<span style="color: red; font-size: 14px;">❌ ล้มเหลว: ${error.message}</span>`;
+        document.getElementById("status").innerHTML = `<span style="color: red;">❌ โหลดพิกัดล้มเหลว</span>`;
       }
     }
 
+    // 📡 4. ตรวจสอบพิกัด GPS มือถือ
     function getLocation() {
       document.getElementById("status").innerHTML = `<span class="loading">กำลังตรวจสอบตำแหน่งของคุณ...</span>`;
       if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(checkDistance, showError, {
-          enableHighAccuracy: true, timeout: 15000, maximumAge: 0
-        });
+        navigator.geolocation.getCurrentPosition(checkDistance, () => {
+          document.getElementById("status").innerHTML = `<span style="color: red;">❌ ดึงพิกัดไม่สำเร็จ โปรดเปิด GPS</span>`;
+        }, { enableHighAccuracy: true, timeout: 15000 });
       }
     }
 
+    // 📏 5. คำนวณระยะห่าง
     function checkDistance(position) {
       currentLat = position.coords.latitude;
       currentLng = position.coords.longitude;
-      
       currentDist = calculateDistance(currentLat, currentLng, OFFICE_LAT, OFFICE_LNG);
       
       const statusDiv = document.getElementById("status");
       if (currentDist <= MAX_DISTANCE) {
-        statusDiv.innerHTML = `<span style="color: #28a745; font-weight:bold;">✅ คุณอยู่ในพื้นที่ออฟฟิศ<br>(ระยะห่าง ${currentDist} เมตร)</span>`;
-        // แสดงปุ่มเมื่ออยู่ในระยะ (ใช้ flex เพื่อให้รองรับ justify-content/align-items)
+        statusDiv.innerHTML = `<span style="color: #28a745; font-weight:bold;">✅ คุณอยู่ในพื้นที่ออฟฟิศ (${currentDist} เมตร)</span>`;
+        // แสดงปุ่มแบบ flex เพื่อให้ตัวหนังสืออยู่ตรงกลาง
         document.getElementById("btn-out").style.display = "flex"; 
       } else {
-        statusDiv.innerHTML = `<span style="color: #dc3545; font-weight:bold;">❌ อยู่นอกพื้นที่<br>(ระยะห่าง ${currentDist}/${MAX_DISTANCE} เมตร)</span>`;
+        statusDiv.innerHTML = `<span style="color: #dc3545; font-weight:bold;">❌ อยู่นอกพื้นที่ (${currentDist}/${MAX_DISTANCE} เมตร)</span>`;
       }
     }
 
     function calculateDistance(lat1, lon1, lat2, lon2) {
       const R = 6371e3; 
-      const phi1 = lat1 * Math.PI / 180;
-      const phi2 = lat2 * Math.PI / 180;
-      const deltaPhi = (lat2 - lat1) * Math.PI / 180;
-      const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
-      const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
-                Math.cos(phi1) * Math.cos(phi2) * Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return Math.round(R * c); 
+      const p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+      const dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+      return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))); 
     }
 
+    // 💾 6. บันทึกข้อมูล
     async function recordTime(statusText) {
       document.getElementById("btn-out").style.display = "none";
       document.getElementById("status").innerHTML = `<span class="loading">⏳ กำลังบันทึกข้อมูล...</span>`;
 
       const payload = {
-        userId: userProfile.userId,
+        userId: userProfile.userId, 
         displayName: userProfile.displayName,
         status: statusText,
         lat: currentLat,
@@ -174,29 +150,19 @@
         });
         
         const result = await response.json();
-
         if (result.status === "success") {
-          alert(`บันทึกข้อมูลสำเร็จ: ${statusText}`);
+          alert(`บันทึกข้อมูลสำเร็จ`);
           liff.closeWindow(); 
         } else {
-          document.getElementById("status").innerHTML = `<span style="color: red;">❌ บันทึกล้มเหลว: ${result.message}</span>`;
-          document.getElementById("btn-out").style.display = "flex";
+          throw new Error(result.message);
         }
       } catch (error) {
-        document.getElementById("status").innerHTML = `<span style="color: red;">❌ เกิดข้อผิดพลาด: ${error.message}</span>`;
-        document.getElementById("btn-out").style.display = "flex";
+        document.getElementById("status").innerHTML = `<span style="color: red;">❌ เกิดข้อผิดพลาดในการบันทึก</span>`;
+        document.getElementById("btn-out").style.display = "flex"; // เปิดปุ่มคืนให้กดใหม่
       }
-    }
-
-    function showError(error) {
-      let msg = "เกิดข้อผิดพลาดในการดึงพิกัด";
-      if(error.code === error.PERMISSION_DENIED) msg = "❌ คุณไม่ได้อนุญาตให้เข้าถึง GPS";
-      if(error.code === error.POSITION_UNAVAILABLE) msg = "❌ ไม่สามารถค้นหาพิกัดตำแหน่งของคุณได้";
-      if(error.code === error.TIMEOUT) msg = "❌ หมดเวลาในการค้นหาตำแหน่ง";
-      document.getElementById("status").innerHTML = `<span style="color: red; font-weight:bold;">${msg}</span>`;
     }
 
     window.onload = main;
   </script>
 </body>
-</html>
+</html>+
